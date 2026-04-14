@@ -4,3 +4,8 @@ ccxt
 pandas
 pandas_ta
 requests
+pytest
+pytest-asyncio
+pytest-cov
+pytest-mock
+httpx
