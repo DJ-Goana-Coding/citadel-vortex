@@ -1,3 +1,14 @@
+---
+title: Citadel Vortex
+emoji: 🌀
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 10000
+pinned: false
+license: mit
+---
+
 # Citadel Vortex
 
 [![Tests and Coverage](https://github.com/DJ-Goana-Coding/citadel-vortex/actions/workflows/test.yml/badge.svg)](https://github.com/DJ-Goana-Coding/citadel-vortex/actions/workflows/test.yml)
