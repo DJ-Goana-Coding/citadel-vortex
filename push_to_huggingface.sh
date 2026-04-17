@@ -17,9 +17,10 @@ fi
 
 # Check if HF_REPO is set
 if [ -z "$HF_REPO" ]; then
-    echo "⚠️  HF_REPO not set, using default: citadel-vortex"
-    HF_REPO="citadel-vortex"
+    echo "⚠️  HF_REPO not set, using default: DJ-Goana-Coding/citadel-vortex"
+    HF_REPO="DJ-Goana-Coding/citadel-vortex"
 fi
+export HF_REPO
 
 # Install huggingface_hub if not already installed
 echo "📦 Installing huggingface_hub..."
@@ -105,7 +106,7 @@ import os
 from huggingface_hub import HfApi, create_repo
 
 token = os.getenv("HF_TOKEN")
-repo_id = os.getenv("HF_REPO", "citadel-vortex")
+repo_id = os.getenv("HF_REPO", "DJ-Goana-Coding/citadel-vortex")
 
 api = HfApi()
 
