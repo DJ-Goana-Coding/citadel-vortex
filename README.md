@@ -32,6 +32,7 @@ license: mit
 - [Configuration](#configuration)
 - [Running the Service](#running-the-service)
 - [API](#api)
+- [Vortex → Hub Data Flow (Synapse)](#vortex--hub-data-flow-synapse)
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
 - [Deployment to Hugging Face Spaces](#deployment-to-hugging-face-spaces)
@@ -45,9 +46,10 @@ license: mit
 - 🔎 **Real‑time market scanning** across any comma‑separated list of symbols (default `SOL/USDT`).
 - 📈 **Technical analysis** using `pandas_ta` — EMA(50) and ADX(14) on the 15‑minute timeframe.
 - ⚡ **Async engine loop** built on `ccxt.pro` and `asyncio`, scanning every 20 seconds.
-- 🌐 **FastAPI service** exposing a `/healthz` endpoint suitable for Render, Fly.io, Hugging Face Spaces, or any container host.
+- 🌐 **FastAPI service** exposing `/healthz` and `/healthz/hub` endpoints suitable for Render, Fly.io, Hugging Face Spaces, or any container host.
+- 🛰️ **Synapse Hub publisher** — periodically POSTs detected signals to the mapping‑and‑inventory Hub's `/v1/ingest` endpoint for RAG awareness.
 - 🔐 **Environment‑driven configuration** — no secrets in source.
-- 🧪 **Comprehensive test suite** — 42 tests, 87% coverage, Python 3.10 / 3.11 / 3.12 matrix in CI.
+- 🧪 **Comprehensive test suite** — Python 3.10 / 3.11 / 3.12 matrix in CI.
 
 ## Architecture
 
@@ -167,6 +169,74 @@ curl http://localhost:10000/healthz
 ```json
 { "status": "Vortex Spinning", "symbols": ["SOL/USDT"] }
 ```
+
+### `GET /healthz/hub`
+
+Verifies connectivity to the central **mapping-and-inventory Hub** configured
+via `HUB_URL`. Returns `configured: false` when no hub is configured, otherwise
+probes the hub's `/healthz` endpoint and reports the result.
+
+```bash
+curl http://localhost:10000/healthz/hub
+```
+
+```json
+{
+  "configured": true,
+  "reachable": true,
+  "status_code": 200,
+  "url": "https://hub.example.com/healthz"
+}
+```
+
+## Vortex → Hub Data Flow (Synapse)
+
+Vortex acts as a **Market Intelligence Harvester** spoke that feeds the
+mapping-and-inventory Hub's RAG index with real-time market awareness.
+
+```
+PhoenixVortex.scan_market()
+        │  (momentum_breakout detected)
+        ▼
+HubPublisher.publish_signal()  ──► in-memory buffer (capped, async-safe)
+                                          │
+                                          │  every HUB_FLUSH_INTERVAL seconds
+                                          ▼
+                          POST {HUB_URL}/v1/ingest
+                          headers: x-citadel-token: $CITADEL_SECRET
+                          body:    { source, count, signals: [...] }
+```
+
+The publisher is implemented in [`citadel/hub_publisher.py`](./citadel/hub_publisher.py)
+and is started automatically alongside the engine loop on FastAPI startup.
+
+| Variable             | Purpose                                              | Default        |
+| -------------------- | ---------------------------------------------------- | -------------- |
+| `HUB_URL`            | Base URL of the Hub. Empty disables the publisher.   | _unset_        |
+| `CITADEL_SECRET`     | Bearer token sent as `x-citadel-token` header.       | _unset_        |
+| `HUB_INGEST_PATH`    | Path appended to `HUB_URL` for ingest.               | `/v1/ingest`   |
+| `HUB_FLUSH_INTERVAL` | Seconds between buffered batch flushes.              | `30`           |
+
+Each ingested signal has the shape:
+
+```json
+{
+  "source": "citadel-vortex",
+  "symbol": "SOL/USDT",
+  "signal_type": "momentum_breakout",
+  "timestamp": "2026-04-18T10:30:00+00:00",
+  "payload": {
+    "close": 152.4,
+    "ema50": 148.1,
+    "adx": 31.2,
+    "prev_high": 151.9,
+    "timeframe": "15m"
+  }
+}
+```
+
+Failed POSTs are logged and the batch is re-queued (bounded by `max_buffer`)
+so transient Hub outages do not lose recent signals.
 
 ## Testing
 

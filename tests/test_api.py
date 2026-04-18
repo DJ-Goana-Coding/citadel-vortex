@@ -92,8 +92,8 @@ class TestFastAPIEndpoints:
                 from main import start_vortex
                 await start_vortex()
 
-                # Verify create_task was called
-                mock_create_task.assert_called_once()
+                # Verify create_task was called for both engine loop and hub publisher
+                assert mock_create_task.call_count == 2
 
     def test_method_not_allowed(self, client):
         """Test that POST to health endpoint returns 405."""
@@ -107,3 +107,29 @@ class TestFastAPIEndpoints:
                 response = client.get("/healthz")
                 assert response.status_code == 200
                 assert response.json()['status'] == 'Vortex Spinning'
+
+    def test_hub_health_endpoint_unconfigured(self, client):
+        """When HUB_URL is unset, /healthz/hub reports configured=False."""
+        with patch('main.HUB_URL', None):
+            response = client.get("/healthz/hub")
+            assert response.status_code == 200
+            data = response.json()
+            assert data['configured'] is False
+            assert data['reachable'] is False
+
+    def test_hub_health_endpoint_configured(self, client):
+        """When HUB_URL is set, /healthz/hub probes the hub."""
+        with patch('main.HUB_URL', 'https://hub.example.com'):
+            with patch('main.ping_hub') as mock_ping:
+                mock_ping.return_value = {
+                    'configured': True,
+                    'reachable': True,
+                    'status_code': 200,
+                    'url': 'https://hub.example.com/healthz',
+                }
+                response = client.get("/healthz/hub")
+                assert response.status_code == 200
+                data = response.json()
+                assert data['configured'] is True
+                assert data['reachable'] is True
+                mock_ping.assert_called_once_with('https://hub.example.com')

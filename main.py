@@ -8,6 +8,8 @@ from fastapi import FastAPI
 import uvicorn
 from datetime import datetime
 
+from citadel.hub_publisher import publisher_from_env, ping_hub
+
 # --- CONFIGURATION (ENV VARS) ---
 API_KEY = os.getenv("BINANCE_API_KEY")
 API_SECRET = os.getenv("BINANCE_API_SECRET")
@@ -15,6 +17,9 @@ HUB_URL = os.getenv("HUB_URL")
 HUB_TOKEN = os.getenv("CITADEL_SECRET")
 # SYMBOL_LIST should be comma-separated: "SOL/USDT,BTC/USDT"
 SYMBOLS = os.getenv("SYMBOL_LIST", "SOL/USDT").split(",")
+
+# Synapse: Vortex → mapping-and-inventory Hub publisher
+hub_publisher = publisher_from_env()
 
 app = FastAPI()
 exchange = ccxt.binance({
@@ -53,7 +58,19 @@ class PhoenixVortex:
                 if last['c'] > prev['h']:
                     print(f"🔥 SIGNAL: {symbol} Momentum Detected.")
                     # Logic for creating order goes here
-                    self.active_trades[symbol] = True 
+                    self.active_trades[symbol] = True
+                    # Synapse: forward the signal to the Hub for RAG awareness.
+                    await hub_publisher.publish_signal(
+                        symbol=symbol,
+                        signal_type="momentum_breakout",
+                        payload={
+                            "close": float(last['c']),
+                            "ema50": float(last['EMA50']),
+                            "adx": float(last['ADX']),
+                            "prev_high": float(prev['h']),
+                            "timeframe": "15m",
+                        },
+                    )
         except Exception as e:
             print(f"Scanner Error ({symbol}): {e}")
 
@@ -69,10 +86,16 @@ vortex = PhoenixVortex()
 @app.on_event("startup")
 async def start_vortex():
     asyncio.create_task(vortex.engine_loop())
+    asyncio.create_task(hub_publisher.run_forever())
 
 @app.get("/healthz")
 def health():
     return {"status": "Vortex Spinning", "symbols": SYMBOLS}
+
+@app.get("/healthz/hub")
+def health_hub():
+    """Verify connectivity to the central mapping-and-inventory Hub."""
+    return ping_hub(HUB_URL)
 
 if __name__ == "__main__":
     # Render uses port 10000 by default for web services
