@@ -4,13 +4,10 @@ import os
 
 app = FastAPI()
 
-# Project Genesis Base Node
-
-
 @app.get('/')
-def health_check():
-    return {'status': 'SUCCESS', 'message': 'TIA Node: Citadel Vortex Active'}
+def health():
+    return {'status': 'SUCCESS', 'message': 'TIA Node Active'}
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 7860))
-    uvicorn.run(app, host='0.0.0.0', port=port)
+    # PORT 7860 is the Hard-Iron requirement for Hugging Face
+    uvicorn.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 7860)))
