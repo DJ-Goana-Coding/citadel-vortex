@@ -12,7 +12,7 @@ RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
-COPY app.py README.md ./
+COPY --chown=app:app app.py README.md ./
 
 USER app
 
