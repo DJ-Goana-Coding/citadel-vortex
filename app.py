@@ -64,7 +64,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 @app.get("/")
-def root() -> dict[str, str]:
+def status() -> dict[str, str]:
     return {"status": "SUCCESS", "message": "TIA Node Active"}
 
 
