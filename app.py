@@ -41,6 +41,20 @@ def _safe_host_env(default: str = "0.0.0.0") -> str:
     return default
 
 
+def _safe_log_level(default: str = "INFO") -> str:
+    raw_value = os.getenv("LOG_LEVEL")
+    if raw_value is None:
+        return default
+
+    value = raw_value.upper()
+    allowed_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+    if value in allowed_levels:
+        return value
+
+    logger.warning("Invalid LOG_LEVEL=%r; falling back to %s", raw_value, default)
+    return default
+
+
 app = FastAPI(title="Citadel Vortex")
 
 
@@ -55,11 +69,14 @@ async def security_headers(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error(
-        "Unhandled %s while serving %s",
-        type(exc).__name__,
-        request.url.path,
-    )
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.exception("Unhandled exception while serving %s", request.url.path)
+    else:
+        logger.error(
+            "Unhandled %s while serving %s",
+            type(exc).__name__,
+            request.url.path,
+        )
     return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
@@ -74,7 +91,7 @@ def healthz() -> dict[str, str]:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+    logging.basicConfig(level=_safe_log_level(default="INFO"))
     host = _safe_host_env(default="0.0.0.0")
     port = _safe_int_env("PORT", default=7860, minimum=1, maximum=65535)
     uvicorn.run(app, host=host, port=port)
