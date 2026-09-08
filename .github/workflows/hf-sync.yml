@@ -1,0 +1,71 @@
+name: Sync Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HF_SPACE_URL: https://huggingface.co/spaces/DJ-Goanna-Coding/citadel-vortex
+      HF_SPACE_BRANCH: main
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate Hugging Face token
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          test -n "$HF_TOKEN" || {
+            echo "::error::Missing required HF_TOKEN secret."
+            exit 1
+          }
+
+      - name: Prepare authenticated Git access
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cat >"$RUNNER_TEMP/hf-askpass.sh" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'oauth2' ;;
+            *Password*) printf '%s\n' "$HF_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$RUNNER_TEMP/hf-askpass.sh"
+
+      - name: Verify remote history is safe to fast-forward
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GIT_ASKPASS: ${{ runner.temp }}/hf-askpass.sh
+          GIT_TERMINAL_PROMPT: 0
+        run: |
+          git remote add huggingface "$HF_SPACE_URL"
+
+          if git ls-remote --exit-code --heads huggingface "$HF_SPACE_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags huggingface \
+              "$HF_SPACE_BRANCH:refs/remotes/huggingface/$HF_SPACE_BRANCH"
+
+            if ! git merge-base --is-ancestor \
+              "refs/remotes/huggingface/$HF_SPACE_BRANCH" HEAD; then
+              echo "::error::The Hugging Face Space contains commits that are not in this repository. This often means the Space still has starter-template history. Review the remote history and use a one-time manual --force-with-lease only after confirming the remote contains no unique work."
+              exit 1
+            fi
+          fi
+
+      - name: Push main to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GIT_ASKPASS: ${{ runner.temp }}/hf-askpass.sh
+          GIT_TERMINAL_PROMPT: 0
+        run: |
+          git push huggingface HEAD:"$HF_SPACE_BRANCH"
